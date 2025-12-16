@@ -1,0 +1,188 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+ 
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+// ============================================
+// PROTOCOLS
+// ============================================
+
+model Protocol {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  displayName     String
+  chain           String   @default("polygon")
+  contractAddress String?
+  category        String   @default("lending")
+  isActive        Boolean  @default(true)
+  
+  metadata        Json?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  yieldSnapshots  YieldSnapshot[]
+  vaults          Vault[]          @relation("CurrentProtocol")
+  decisionsFrom   AgentDecision[]  @relation("FromProtocol")
+  decisionsTo     AgentDecision[]  @relation("ToProtocol")
+  
+  @@index([chain, isActive])
+  @@map("protocols")
+}
+
+model YieldSnapshot {
+  id         String   @id @default(uuid())
+  protocolId String
+  protocol   Protocol @relation(fields: [protocolId], references: [id])
+  
+  asset      String
+  apy        Decimal  @db.Decimal(10, 4)
+  tvl        Decimal? @db.Decimal(20, 2)
+  
+  source     String
+  metadata   Json?
+  
+  timestamp  DateTime @default(now())
+  
+  @@index([protocolId, asset, timestamp(sort: Desc)])
+  @@index([asset, timestamp(sort: Desc)])
+  @@map("yield_snapshots")
+}
+
+// ============================================
+// VAULTS
+// ============================================
+
+model Vault {
+  id              String   @id @default(uuid())
+  
+  userAddress     String
+  contractAddress String   @unique
+  chainId         Int      @default(137)
+  
+  totalDeposited  Decimal  @default(0) @db.Decimal(20, 8)
+  currentBalance  Decimal  @default(0) @db.Decimal(20, 8)
+  totalEarned     Decimal  @default(0) @db.Decimal(20, 8)
+  
+  currentProtocolId String?
+  currentProtocol   Protocol? @relation("CurrentProtocol", fields: [currentProtocolId], references: [id])
+  currentAsset      String    @default("USDC")
+  
+  strategy        String   @default("yield-optimizer")
+  isActive        Boolean  @default(false)
+  minYieldDiff    Decimal  @default(2.0) @db.Decimal(5, 2)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastRebalance   DateTime?
+  
+  decisions       AgentDecision[]
+  
+  @@index([userAddress])
+  @@index([isActive])
+  @@map("vaults")
+}
+
+// ============================================
+// DECISIONS
+// ============================================
+
+enum DecisionType {
+  REBALANCE
+  HOLD
+  EMERGENCY_EXIT
+  INITIAL_DEPOSIT
+}
+
+model AgentDecision {
+  id            String       @id @default(uuid())
+  vaultId       String
+  vault         Vault        @relation(fields: [vaultId], references: [id])
+  
+  decisionType  DecisionType
+  
+  fromProtocolId String?
+  fromProtocol   Protocol?   @relation("FromProtocol", fields: [fromProtocolId], references: [id])
+  toProtocolId   String?
+  toProtocol     Protocol?   @relation("ToProtocol", fields: [toProtocolId], references: [id])
+  
+  amount            Decimal  @db.Decimal(20, 8)
+  expectedGainApy   Decimal  @db.Decimal(10, 4)
+  estimatedGasCost  Decimal  @db.Decimal(10, 8)
+  netBenefitApy     Decimal  @db.Decimal(10, 4)
+  
+  wasExecuted    Boolean  @default(false)
+  reason         String   @db.Text
+  
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+  
+  transactions   Transaction[]
+  
+  @@index([vaultId, createdAt(sort: Desc)])
+  @@index([decisionType, wasExecuted])
+  @@map("agent_decisions")
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model Transaction {
+  id          String            @id @default(uuid())
+  decisionId  String
+  decision    AgentDecision     @relation(fields: [decisionId], references: [id])
+  
+  txHash      String            @unique
+  status      TransactionStatus @default(PENDING)
+  
+  gasUsed     Decimal?          @db.Decimal(10, 2)
+  gasPriceGwei Decimal?         @db.Decimal(10, 2)
+  blockNumber BigInt?
+  
+  errorMessage String?          @db.Text
+  
+  executedAt  DateTime          @default(now())
+  confirmedAt DateTime?
+  
+  @@index([txHash])
+  @@index([decisionId])
+  @@index([status])
+  @@map("transactions")
+}
+
+// ============================================
+// MONITORING
+// ============================================
+
+model SystemHealth {
+  id              String   @id @default(uuid())
+  
+  service         String
+  status          String
+  lastCheckAt     DateTime @default(now())
+  
+  metrics         Json?
+  errorCount      Int      @default(0)
+  lastError       String?  @db.Text
+  
+  @@index([service, lastCheckAt(sort: Desc)])
+  @@map("system_health")
+}

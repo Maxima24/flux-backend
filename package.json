@@ -1,0 +1,21 @@
+{
+  "name": "flux_ai_agent",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "models/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "start:src": "npm run start --workspace=apps/src"
+  },
+  "devDependencies": {
+    "ts-jest": "^29.2.5",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

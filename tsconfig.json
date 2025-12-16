@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@models/comp_aave_yield_optimiser  ": [
+        "models/comp_aave_yield_optimiser/index.ts"
+      ]
+    }
+  }
+}
