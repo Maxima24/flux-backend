@@ -18,7 +18,7 @@ export declare const depositOptimalWorkflow: import("@langchain/langgraph").Comp
     compConstants?: CompoundProtocolConstants;
     maxValuesInRanges?: [bigint, bigint][];
     transactions?: Transaction[];
-}, "__start__" | "fetchAaveDetails" | "fetchCompDetails" | "fetchBalances" | "initiateRangeWorkers" | "getMaxValueWithinRange" | "getOptimalDelta", {
+}, "__start__" | "fetchAaveDetails" | "fetchCompDetails" | "fetchBalances" | "initiateRangeWorkers" | "getMaxValueWithinRange" | "generateTransactions", {
     agentAddress: {
         (): import("@langchain/langgraph").LastValue<string>;
         (annotation: import("@langchain/langgraph").SingleReducer<string, string>): import("@langchain/langgraph").BinaryOperatorAggregate<string, string>;
@@ -128,7 +128,7 @@ export declare const depositOptimalWorkflow: import("@langchain/langgraph").Comp
     getMaxValueWithinRange: {
         maxValuesInRanges: [bigint, bigint][];
     };
-    getOptimalDelta: {
+    generateTransactions: {
         transactions: Transaction[];
     };
 }, unknown, unknown>;

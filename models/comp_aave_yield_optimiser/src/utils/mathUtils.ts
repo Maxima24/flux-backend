@@ -54,3 +54,7 @@ export function min(x: bigint, y: bigint): bigint {
 export function max(x: bigint, y: bigint): bigint {
   return x > y ? x : y;
 }
+
+export function abs(x: bigint): bigint {
+  return x < 0n ? x * -1n : x;
+}

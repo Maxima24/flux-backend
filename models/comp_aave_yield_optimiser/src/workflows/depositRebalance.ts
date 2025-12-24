@@ -11,9 +11,16 @@ import { newtonRapshonWorkflow } from "./newton.js";
 import type { AaveProtocolConstants } from "../services/aave/types.js";
 import type { CompoundProtocolConstants } from "../services/compound/types.js";
 import { getDetailsAave } from "../services/aave/methods.js";
-import { calcAaveThreshold, initConstants } from "../services/aave/services.js";
+import {
+  calcAaveSupplyRate,
+  calcAaveThreshold,
+  initConstants,
+} from "../services/aave/services.js";
 import { getDetailsCompound } from "../services/compound/methods.js";
-import { calcCompThreshold } from "../services/compound/services.js";
+import {
+  calcCompSupplyRate,
+  calcCompThreshold,
+} from "../services/compound/services.js";
 import {
   deriveRanges,
   innerBoundary,
@@ -21,12 +28,13 @@ import {
 } from "../utils/rangeUtils.js";
 import { computeFxDepositRabalance as computeFx } from "../services/computeFunctions/computeFx.js";
 import { computePxAndPxPrimeDepositOrRebalance as computePxAndPxPrime } from "../services/computeFunctions/computePxandPcxPrime.js";
-import { min } from "../utils/mathUtils.js";
+import { abs, min } from "../utils/mathUtils.js";
 import type { AssetMetaData, balancesParams } from "../types.js";
 import type { NewtonRalphFlowState, PxInvariants } from "./newton.js";
-import { formatUnits } from "ethers";
+import { formatUnits, parseUnits } from "ethers";
 import type { Transaction } from "../types.js";
 import { getUserAssetBalance } from "../services/ERC20/methods.js";
+import { AaveV3Polygon } from "@bgd-labs/aave-address-book";
 
 const depositWorkflowState = Annotation.Root({
   agentAddress: Annotation<string>,
@@ -44,22 +52,22 @@ const depositWorkflowState = Annotation.Root({
 type DepositWorkflowState = typeof depositWorkflowState.State;
 
 const fetchBalances = async (state: DepositWorkflowState) => {
-  const { assetMetaData } = state;
+  //const { assetMetaData } = state;
 
-  const { atokenAddress, compPoolAddress, assetAddress } = assetMetaData;
+  // const { atokenAddress, compPoolAddress, assetAddress } = assetMetaData;
 
-  const idleBalance = await getUserAssetBalance(
-    assetAddress,
-    state.agentAddress
-  );
-  const compBalance = await getUserAssetBalance(
-    compPoolAddress,
-    state.agentAddress
-  );
-  const aaveBalance = await getUserAssetBalance(
-    atokenAddress,
-    state.agentAddress
-  );
+  const idleBalance = parseUnits("2000", 6); //await getUserAssetBalance(
+  //   assetAddress,
+  //   state.agentAddress
+  // );
+  const compBalance = parseUnits("100000", 6); // await getUserAssetBalance(
+  //   compPoolAddress,
+  //   state.agentAddress
+  // );
+  const aaveBalance = parseUnits("100000", 6); //await getUserAssetBalance(
+  //   atokenAddress,
+  //   state.agentAddress
+  // );
 
   const balances: balancesParams = { idleBalance, compBalance, aaveBalance };
 
@@ -74,6 +82,7 @@ const fetchBalances = async (state: DepositWorkflowState) => {
  * @returns aaveConstants   Updated
  */
 const fetchAaveDetails = async (state: DepositWorkflowState) => {
+  console.log(".... fetching aave details");
   let data = await getDetailsAave(state.assetMetaData);
 
   let aaveConstants: AaveProtocolConstants = initConstants(data);
@@ -90,6 +99,7 @@ const fetchAaveDetails = async (state: DepositWorkflowState) => {
  * @returns compConstants   Updated
  */
 const fetchCompDetails = async (state: DepositWorkflowState) => {
+  console.log(".....fetching Compound details");
   let compConstants: CompoundProtocolConstants = await getDetailsCompound(
     state.assetMetaData
   );
@@ -173,6 +183,8 @@ const getMaxValueWithinRange = async (state: NewtonRalphFlowState) => {
     iterationCount,
   });
 
+  console.log("The max values in ranges are " + maxValuesInRanges);
+
   return { maxValuesInRanges };
 };
 
@@ -195,13 +207,17 @@ const generateTransactions = (state: DepositWorkflowState) => {
   }
 
   console.log(
-    "The optimal resultant supply Rate is  " + formatUnits(fxMax, 27)
+    "The optimal  delta is " +
+      xMax +
+      " and the resultant supply Rate is  " +
+      formatUnits(fxMax, 27)
   );
 
   const optimalDeltaAave = xMax;
 
   const optimalDeltaCompound = idleBalance - optimalDeltaAave;
 
+  console.log("The optimal compundDelta is " + optimalDeltaCompound);
   const transactions = orderDepositRebalanceTransactions(
     optimalDeltaAave,
     optimalDeltaCompound
@@ -225,15 +241,15 @@ export const depositOptimalWorkflow = new StateGraph(depositWorkflowState)
     ends: ["getMaxValueWithinRange"],
   })
   .addNode("getMaxValueWithinRange", getMaxValueWithinRange)
-  .addNode("getOptimalDelta", generateTransactions)
+  .addNode("generateTransactions", generateTransactions)
   .addEdge(START, "fetchAaveDetails")
   .addEdge(START, "fetchCompDetails")
   .addEdge(START, "fetchBalances")
   .addEdge("fetchAaveDetails", "initiateRangeWorkers")
   .addEdge("fetchCompDetails", "initiateRangeWorkers")
   .addEdge("fetchBalances", "initiateRangeWorkers")
-  .addEdge("getMaxValueWithinRange", "getOptimalDelta")
-  .addEdge("getOptimalDelta", END)
+  .addEdge("getMaxValueWithinRange", "generateTransactions")
+  .addEdge("generateTransactions", END)
   .compile();
 
 /// Utils
@@ -244,22 +260,22 @@ function orderDepositRebalanceTransactions(
   let transactions: Transaction[] = [];
 
   if (optimalDeltaAave > 0n && optimalDeltaCompound > 0n) {
-    transactions.concat([
+    transactions = [
       ["DepositAave", optimalDeltaAave],
       ["DepositCompound", optimalDeltaCompound],
-    ]);
+    ];
   } else if (optimalDeltaAave < 0n) {
     // NOTE optimalDeltaAave and optimalDeltaCompound can't both be negative
     // for depositing and rebalancing
-    transactions.concat([
-      ["WithdrawAave", optimalDeltaAave],
+    transactions = [
+      ["WithdrawAave", abs(optimalDeltaAave)],
       ["DepositCompound", optimalDeltaCompound],
-    ]);
+    ];
   } else {
-    transactions.concat([
-      ["WithdrawCompound", optimalDeltaCompound],
+    transactions = [
+      ["WithdrawCompound", abs(optimalDeltaCompound)],
       ["DepositAave", optimalDeltaAave],
-    ]);
+    ];
   }
 
   return transactions;
@@ -314,3 +330,130 @@ function instantiateWorker(
     maxValuesInRanges: [],
   });
 }
+
+let assetMetaData: AssetMetaData = {
+  symbol: "USDC",
+  decimals: 6n,
+  atokenAddress: AaveV3Polygon.ASSETS.USDC.A_TOKEN,
+  aavePoolAddress: "",
+  compPoolAddress: "0xF25212E676D1F7F89Cd72fFEe66158f541246445",
+  assetAddress: AaveV3Polygon.ASSETS.USDC.UNDERLYING,
+};
+
+let result = await depositOptimalWorkflow.invoke({ assetMetaData });
+
+let { compConstants, aaveConstants, transactions, balances } = result
+
+//console.log("The transactions are   " + transactions);
+
+let amount = parseUnits("2000", 6);
+
+let params = {
+  A: 0n,
+  C: 0n,
+  W: balances.idleBalance,
+  decimals: 6n,
+  aaveConstants,
+  compConstants,
+};
+
+// let currentSupplyRateAave = calcAaveSupplyRate(0n, aaveConstants);
+
+// console.log(
+//   "The current supply rate on aave is " + formatUnits(currentSupplyRateAave, 27)
+// );
+
+// let supplyRateOnlyuAave = computeFx({ ...params, x: amount });
+
+// console.log(
+//   "The  resulting supply rate for depositing only on aave is " +
+//     formatUnits(supplyRateOnlyuAave, 27)
+// );
+
+// let currentSupplyRateCompound = calcCompSupplyRate(0n, compConstants);
+
+// console.log(
+//   "The current supply rate for compound is " +
+//     formatUnits(currentSupplyRateCompound, 18)
+// );
+
+// let supplyrateOnlyCompound = computeFx({ ...params, x: 0n });
+
+// console.log(
+//   "The  resulting supply rate for depositing only on compound is " +
+//     formatUnits(supplyrateOnlyCompound, 27)
+// );
+
+// let wupplyRateInbetween = computeFx({ ...params, x: amount / 2n });
+
+// console.log(
+//   "The supply rate for depositing equally is  " +
+//     formatUnits(wupplyRateInbetween, 27)
+// );
+
+// console.log(
+//   "The supply rate only for compound is " +
+//     formatUnits(supplyrateOnlyCompound, 27)
+// );
+
+console.log("The transactions are   " + transactions);
+
+//   let compConstants: CompoundProtocolConstants = await getDetailsCompound(
+//     assetMetaData
+//   );
+
+//   let data = await getDetailsAave(assetMetaData);
+
+//   let aaveConstants: AaveProtocolConstants = initConstants(data);
+
+//   let params = {
+//     A: 0n,
+//     C: 0n,
+//     W: parseUnits("2000000", 6), // 2 million tokens
+//     decimals: 6n,
+//     aaveConstants,
+//     compConstants,
+//   };
+
+//   let computeFxofX = (x: bigint): bigint => {
+//     return computeFx({
+//       ...params,
+//       x,
+//     });
+//   };
+
+//   let computePxAndPxPrimeofX = (x: bigint): [bigint, bigint] => {
+//     return computePxAndPxPrime({
+//       ...params,
+//       x,
+//     });
+//   };
+
+//   let xFactor = 10n ** 6n;
+//   let pxFactor = 10n ** 27n;
+
+//   const edge: [bigint, bigint] = [0n, params.W];
+
+//   const x0 = (edge[0] + edge[1]) / 2n;
+
+//   let invariants: PxInvariants = {
+//     edge,
+//     xFactor,
+//     pxFactor,
+//     computeFxofX,
+//     computePxAndPxPrimeofX,
+//     x0,
+//   };
+
+//   const iterationCount = 15;
+
+//   let result = await newtonRapshonWorkflow.invoke({
+//     invariants,
+//     iterationCount,
+//     maxValuesInRanges: [],
+//   });
+
+//   console.log(result.maxValuesInRanges);
+// };
+
+// testValue();

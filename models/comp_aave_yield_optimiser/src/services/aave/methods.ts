@@ -9,9 +9,10 @@ import type { AaveProtocolInitConstants, BaseCurrencyInfo, UiReservesDataRespons
 import type { AssetMetaData } from "../../types.js";
 
 
-const provider = new ethers.JsonRpcProvider(
+let provider = new ethers.JsonRpcProvider(
   "https://polygon-mainnet.infura.io/v3/3a0bf1b6f69c4750b475bb4aa42d9dca"
 );
+const POOL_ADDRESS = AaveV3Polygon.POOL_ADDRESSES_PROVIDER
 
 
 
@@ -29,7 +30,7 @@ const provider = new ethers.JsonRpcProvider(
 //   }
 
 export async function getDetailsAave(  assetMetaData: AssetMetaData):Promise<AaveProtocolInitConstants> {
-    const {aavePoolAddress} = assetMetaData;
+    const {symbol} = assetMetaData;
 
     // 1. Instantiate the Contract
     const dataProvider = new ethers.Contract(
@@ -40,7 +41,7 @@ export async function getDetailsAave(  assetMetaData: AssetMetaData):Promise<Aav
 
    try {
  //@ts-ignore
-  const resultList:[AaveProtocolInitConstants[],_] = await dataProvider.getReservesData(LENDING_POOL_ADDRESSES_PROVIDER)
+  const resultList:[AaveProtocolInitConstants[],_] = await dataProvider.getReservesData(AaveV3Polygon.POOL_ADDRESSES_PROVIDER)
 
 
   let reserves = resultList[0]
@@ -48,7 +49,7 @@ export async function getDetailsAave(  assetMetaData: AssetMetaData):Promise<Aav
   let reserve ;
   
    for (const res of reserves) {
-     if (res.symbol  == assetMetaData.symbol){
+     if (res.symbol  == symbol){
       reserve = res
      }
 

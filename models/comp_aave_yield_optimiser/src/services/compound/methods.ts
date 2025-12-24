@@ -39,9 +39,10 @@ export async function supplyToCompound(assetMetaData: AssetMetaData,amount: bigi
 
 
 export async function withdrawFromCompound(assetMetaData: AssetMetaData,amount: bigint,pkey:string){
+
   const {compPoolAddress,assetAddress} = assetMetaData;
   const signer = new Wallet(pkey, provider);
-  const pool = new Contract(assetMetaData.compPoolAddress, abi, signer);
+  const pool = new Contract(compPoolAddress, abi, signer);
   //@ts-ignore
   const tx = await pool.withdraw(assetAddress, amount);
   return tx;

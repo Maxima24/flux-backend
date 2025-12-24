@@ -17,7 +17,7 @@ function initX0(state) {
     let [px0, px0Prime] = computePxAndPxPrimeofX(x0);
     let Xterms = [[x0, px0, px0Prime]];
     let goto = "nextApproximate";
-    if (px0 == 0n || px0Prime >= 0n) {
+    if (px0 == 0n || px0Prime == 0n) {
         goto = "getMaxFx";
     }
     return new Command({
@@ -103,7 +103,7 @@ function nextApproximate(state) {
     let [pxNext, pxNextPrime] = computePxAndPxPrimeofX(xNext);
     Xterms = Xterms.concat([[xNext, pxNext, pxNextPrime]]);
     let goto = "llmCheck";
-    if (pxNext == 0n || pxNextPrime >= 0n) {
+    if (pxNext == 0n || pxNextPrime == 0n) {
         goto = "getMaxFx";
     }
     return new Command({ update: { Xterms }, goto });
@@ -114,7 +114,7 @@ function getMaxFx(state) {
     const bestApprox = Xterms[Xterms.length - 1];
     let vals = edge;
     if (bestApprox) {
-        vals = vals.concat([bestApprox[0]]);
+        vals.push(bestApprox[0]);
     }
     //@ts-ignore
     let xMax = vals[0];
@@ -146,116 +146,91 @@ export const newtonRapshonWorkflow = new StateGraph(newtonRalphWorkflowState)
     .addEdge("getMaxFx", END)
     .compile()
     .withConfig({ recursionLimit: 200 });
-const model = new ChatGroq({
-    model: "openai/gpt-oss-120b",
-    temperature: 0,
-});
-const structuredModel = model; //.withStructuredOutput(llmSchema);
-const modelPrompt = `You are a Numerical Analysis Expert specializing in Newton-Raphson convergence analysis.
-
-## YOUR TASK
-Analyze Newton-Raphson iteration data to determine:
-1. Whether the method is converging
-2. How many additional iterations are needed
-
-## INPUT FORMAT
-You receive:
-- \`data\`: Array of [xi, f(xi), f'(xi)] for each iteration
-- \`xFactor\`: Scaling factor for x values (actual_x = xi / xFactor)
-- \`fxFactor\`: Scaling factor for f(x) values (actual_f = f(xi) / fxFactor)
-
-Example:
-\`\`\`json
-{
-  "data": [[1000, 2.5, 3.0], [833, 0.416, 3.6], [819, 0.016, 3.66]],
-  "xFactor": 1000,
-  "fxFactor": 1e27
-}
-\`\`\`
-
-## SCALING RELATIONSHIPS
-- **Actual x**: actual_x = xi_scaled / xFactor
-- **Actual f(x)**: actual_f = f_scaled / fxFactor
-- **Actual f'(x)**: actual_fprime = fprime_scaled / fxFactor
-
-Large factors mean actual values are tiny:
-- fxFactor = 1e27 and f_scaled = 1.5 → actual_f = 1.5e-27
-- xFactor = 1000 and x_scaled = 1000 → actual_x = 1.0
-
-## ANALYSIS STEPS
-
-### 1. Convert to Actual Values
-Convert all scaled values to actual values for meaningful analysis.
-
-### 2. Check Convergence Pattern
-Compute differences: Δx_actual(i) = |x_i - x_{i-1}|
-
-**Converging if:**
-- Δx values are decreasing
-- f(x) values are approaching zero
-- Changes are becoming progressively smaller
-
-### 3. Assess Function Values
-Check if |f_actual| < 1e-12 (or appropriate threshold for problem)
-
-### 4. Evaluate Convergence Rate
-For quadratic convergence: ratio = Δx_{i+1} / (Δx_i)^2 should stabilize
-
-### 5. Determine Remaining Iterations
-
-**If converging:**
-- Already precise: 0-1 iterations
-- Good progress: 1-3 iterations  
-- Slow progress: 3-5 iterations
-- Maximum: 10 iterations
-
-**If NOT converging:**
-- Return 0 iterations
-- Check for: oscillation, divergence, or near-zero derivative
-
-## CONVERGENCE THRESHOLDS
-
-Adapt based on scaling:
-- **X-convergence**: Δx_scaled < xFactor × 1e-8
-- **F-convergence**: |f_scaled| < fxFactor × 1e-12
-
-## SPECIAL CASES
-
-**Large fxFactor (1e18+):**
-- Actual f(x) values are extremely small
-- Even moderate scaled values indicate good convergence
-- Focus on x-convergence
-
-**Large xFactor (1e9+):**
-- Actual x values are small
-- Scaled differences need careful interpretation
-
-**Newton step scaling:**
-- Step size in scaled units: Δx_scaled ∝ xFactor/fxFactor
-- Extreme ratios (< 1e-12 or > 1e12) may cause issues
-
-## OUTPUT FORMAT
-Return ONLY valid JSON (no markdown, no backticks):
-{
-  "isConverging": true,
-  "extraIterationCount": 2
-}
-
-## DECISION GUIDELINES
-
-**Converging (isConverging: true):**
-- Monotonic decrease in errors
-- f(x) approaching zero
-- Reasonable progress each iteration
-
-**Iteration counts:**
-- 0: Already at desired precision
-- 1-2: Very close, minor refinement
-- 3-5: Good progress, moderate refinement needed
-- 5-10: Slower convergence, more work needed
-- 0 (if not converging): Method failing
-
-Be pragmatic: recommend iterations that provide meaningful improvement given the current precision level.`;
+// const model = new ChatGroq({
+//   model: "openai/gpt-oss-120b",
+//   temperature: 0,
+// });
+// const structuredModel = model; //.withStructuredOutput(llmSchema);
+// const modelPrompt = `You are a Numerical Analysis Expert specializing in Newton-Raphson convergence analysis.
+// ## YOUR TASK
+// Analyze Newton-Raphson iteration data to determine:
+// 1. Whether the method is converging
+// 2. How many additional iterations are needed
+// ## INPUT FORMAT
+// You receive:
+// - \`data\`: Array of [xi, f(xi), f'(xi)] for each iteration
+// - \`xFactor\`: Scaling factor for x values (actual_x = xi / xFactor)
+// - \`fxFactor\`: Scaling factor for f(x) values (actual_f = f(xi) / fxFactor)
+// Example:
+// \`\`\`json
+// {
+//   "data": [[1000, 2.5, 3.0], [833, 0.416, 3.6], [819, 0.016, 3.66]],
+//   "xFactor": 1000,
+//   "fxFactor": 1e27
+// }
+// \`\`\`
+// ## SCALING RELATIONSHIPS
+// - **Actual x**: actual_x = xi_scaled / xFactor
+// - **Actual f(x)**: actual_f = f_scaled / fxFactor
+// - **Actual f'(x)**: actual_fprime = fprime_scaled / fxFactor
+// Large factors mean actual values are tiny:
+// - fxFactor = 1e27 and f_scaled = 1.5 → actual_f = 1.5e-27
+// - xFactor = 1000 and x_scaled = 1000 → actual_x = 1.0
+// ## ANALYSIS STEPS
+// ### 1. Convert to Actual Values
+// Convert all scaled values to actual values for meaningful analysis.
+// ### 2. Check Convergence Pattern
+// Compute differences: Δx_actual(i) = |x_i - x_{i-1}|
+// **Converging if:**
+// - Δx values are decreasing
+// - f(x) values are approaching zero
+// - Changes are becoming progressively smaller
+// ### 3. Assess Function Values
+// Check if |f_actual| < 1e-12 (or appropriate threshold for problem)
+// ### 4. Evaluate Convergence Rate
+// For quadratic convergence: ratio = Δx_{i+1} / (Δx_i)^2 should stabilize
+// ### 5. Determine Remaining Iterations
+// **If converging:**
+// - Already precise: 0-1 iterations
+// - Good progress: 1-3 iterations
+// - Slow progress: 3-5 iterations
+// - Maximum: 10 iterations
+// **If NOT converging:**
+// - Return 0 iterations
+// - Check for: oscillation, divergence, or near-zero derivative
+// ## CONVERGENCE THRESHOLDS
+// Adapt based on scaling:
+// - **X-convergence**: Δx_scaled < xFactor × 1e-8
+// - **F-convergence**: |f_scaled| < fxFactor × 1e-12
+// ## SPECIAL CASES
+// **Large fxFactor (1e18+):**
+// - Actual f(x) values are extremely small
+// - Even moderate scaled values indicate good convergence
+// - Focus on x-convergence
+// **Large xFactor (1e9+):**
+// - Actual x values are small
+// - Scaled differences need careful interpretation
+// **Newton step scaling:**
+// - Step size in scaled units: Δx_scaled ∝ xFactor/fxFactor
+// - Extreme ratios (< 1e-12 or > 1e12) may cause issues
+// ## OUTPUT FORMAT
+// Return ONLY valid JSON (no markdown, no backticks):
+// {
+//   "isConverging": true,
+//   "extraIterationCount": 2
+// }
+// ## DECISION GUIDELINES
+// **Converging (isConverging: true):**
+// - Monotonic decrease in errors
+// - f(x) approaching zero
+// - Reasonable progress each iteration
+// **Iteration counts:**
+// - 0: Already at desired precision
+// - 1-2: Very close, minor refinement
+// - 3-5: Good progress, moderate refinement needed
+// - 5-10: Slower convergence, more work needed
+// - 0 (if not converging): Method failing
+// Be pragmatic: recommend iterations that provide meaningful improvement given the current precision level.`;
 // async function testValue() {
 //   let xFactor = 10n ** 5n;
 //   let pxFactor = xFactor;
